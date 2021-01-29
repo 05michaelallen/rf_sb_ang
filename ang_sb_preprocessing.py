@@ -47,12 +47,6 @@ t1 = rio.open("../data/AVng" + linei)
 # mask using shapefile
 t1c, t1c_trans = mask.mask(t1, shp, crop = True)
 
-# plot single band 
-if flag_DIAG_PLOT:
-    t1c[t1c < 0] = np.nan
-    p = plt.imshow(t1c[nir,:,:])
-    plt.colorbar(p)
-
 # copy metadata and update
 t1c_meta = t1.meta.copy()
 t1c_meta.update({'driver': "GTiff",
@@ -78,3 +72,9 @@ if flag_QUICKLOOK:
         out.write(t1c_fc)
     with rio.open("../data/AVng" + linei + "clip_rgb.tif", 'w', **t1c_ql_meta) as out:
         out.write(t1c_rgb)
+        
+# plot single band for diagnod
+if flag_DIAG_PLOT:
+    t1c[t1c < 0] = np.nan
+    p = plt.imshow(t1c[nir,:,:])
+    plt.colorbar(p)
