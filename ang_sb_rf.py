@@ -13,10 +13,11 @@ from rasterio import features
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
+import matplotlib.colors
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import train_test_split
 
-os.chdir("/Volumes/ellwood/ang_sb_portfolio/code")
+os.chdir("/Volumes/ellwood/rf_sb_ang/code")
 
 # =============================================================================
 # 
@@ -28,6 +29,17 @@ linei = lines[0]
 # imgs
 img = rio.open("../data/AVng" + linei + "_clip.tif")
 tv = rio.open("../data/AVng" + linei + "train_v1.tif")
+classes = ['Water', 
+           'Sand', 
+           'Bare Soil',
+           'NPV',
+           'Road',
+           'Roof',
+           'Red Tile Roof',
+           'Astroturf',
+           'Submurged Vegetation',
+           'Tree',
+           'Turfgrass']
 
 # read them and reshape
 # convert to pandas df b/c easier filtering
@@ -52,7 +64,7 @@ train = it.iloc[:,:it.shape[1]-1]
 # =============================================================================
 # 
 # =============================================================================
-rf = RandomForestClassifier(n_estimators = 1000, n_jobs = -1, verbose = 1, oob_score = True, random_state = 1)
+rf = RandomForestClassifier(n_estimators = 500, n_jobs = -1, verbose = 1, oob_score = True, random_state = 1)
 rf.fit(it.iloc[:,:it.shape[1]-1], it['class'])
 
 pred = rf.predict(itv.iloc[:,:itv.shape[1]-1])
@@ -65,7 +77,29 @@ oob = rf.oob_score_
 pred_img = pred.reshape([img.height, img.width])
 
 # plot
-plt.imshow(np.rot90(pred_img, 3))
+fig, ax = plt.subplots(1, 1)
+
+# set up colormap
+colors = ['dodgerblue', 
+          'tan', 
+          'saddlebrown', 
+          'red', 
+          '0.8', 
+          '0.4', 
+          'indianred', 
+          'cyan', 
+          'teal', 
+          'forestgreen',
+          'limegreen']
+cmap = matplotlib.colors.LinearSegmentedColormap.from_list("", colors, 11)
+
+p = plt.imshow(np.rot90(pred_img, 0)-0.5, vmin = 0, vmax = 11, cmap = cmap)
+cbar = plt.colorbar(p, 
+                    ax = ax, 
+                    ticks = np.arange(0.5, 11.5, 1), 
+                    shrink = 0.5)
+cbar.ax.set_yticklabels(classes)
+plt.savefig("../plots/test.png", dpi = 1000)
 
 # output
 meta = img.meta.copy()
