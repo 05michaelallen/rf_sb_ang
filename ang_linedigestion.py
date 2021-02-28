@@ -36,8 +36,9 @@ with fiona.open("../data/shp/ang_ucsb_utm11n_wgs84.shp") as shapefile:
 
 # list lines
 # note: these are specific to the 2014 AVNG data
-#lines = ["20140603t195821", "20140603t201129", "20140603t202947"] # individual lines
-lines = ['20140603_sbdr_masked_mosaic'] # mosaicked lines. can mosaic using rio.merge.merge, this takes a long time (particularly w/ many bands) so I have pre-mosaicked these in a separate script
+# mosaicked lines. can mosaic using rio.merge.merge, 
+# this takes a long time (particularly w/ many bands) so I have pre-mosaicked these in a separate script
+lines = ['20140603_sbdr_masked_mosaic'] 
 # pick the line
 linei = lines[0]
  
@@ -73,7 +74,7 @@ if flag_QUICKLOOK:
     with rio.open("../data/AVng" + linei + "clip_rgb.tif", 'w', **t1c_ql_meta) as out:
         out.write(t1c_rgb)
         
-# plot single band for diagnod
+# plot single band for diagnostics
 if flag_DIAG_PLOT:
     t1c[t1c < 0] = np.nan
     p = plt.imshow(t1c[nir,:,:])

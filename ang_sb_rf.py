@@ -18,7 +18,7 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import train_test_split, cross_val_score, cross_val_predict
 from sklearn.metrics import confusion_matrix, recall_score, precision_score, f1_score
 
-os.chdir("/Volumes/ellwood/rf_sb_ang/code")
+os.chdir("/media/vegveg/bedlam/rf_sb_ang/code")
 flag_CLASSPLOT = True
 flag_OUTPUTRASTER = True
 
