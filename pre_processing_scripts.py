@@ -114,7 +114,7 @@ def rm_bad_bands(wd, img, bad_bands_fn, band_status_column_name, bad_band_value)
 
 
 def reclassify_NAs(wd, img, old_na, new_na):
-    """reclassifies NA values in a raster
+    """Reclassifies NA values in a raster
     
     Parameters
     ----------
@@ -153,7 +153,7 @@ def reclassify_NAs(wd, img, old_na, new_na):
 
 
 def import_reshape(wd, img):  
-    """imports and reshapes the multiband raster
+    """Imports and reshapes a multiband raster
     
     Parameters
     ----------
