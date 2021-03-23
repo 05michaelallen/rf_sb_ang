@@ -29,7 +29,7 @@ flag_OUTPUTRASTER = True
 lines = ['20140603_sbdr_masked_mosaic']
 linei = lines[0]
 # open connection
-img = rio.open("../data/AVng" + linei + "_clip.tif")
+img = rio.open("../data/AVng20140603_sbdr_masked_mosaic_reclass_rmbadbands_clip")
 
 # list, select, and open rasterized training data
 trainlist = glob("../data/AVng20140603_sbdr_masked_mosaic_clip_train_*")

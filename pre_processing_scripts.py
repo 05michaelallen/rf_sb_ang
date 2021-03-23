@@ -165,15 +165,18 @@ def import_reshape(wd, img):
     Returns
     ------- 
     Numpy array with rows = pixels, cols = bands/features.
+    Metadata
+    Band descriptions
     
     """
     # open connection, grab metadata
     rast = rio.open(wd + img)
     meta = rast.meta.copy()
+    desc = list(rast.descriptions)
     
     # read and reshape
     rastr = rast.read()
     rastrr = rastr.reshape([rast.count, rast.height * rast.width]).T 
     
     # return metadata (for output) and reshaped raster
-    return rastrr, meta
+    return rastrr, meta, desc
