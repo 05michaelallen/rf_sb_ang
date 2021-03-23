@@ -6,15 +6,20 @@ Created on Sun Feb 28 10:21:55 2021
 @author: vegveg
 """
 
-import os
 import rasterio as rio
-import numpy
-import matplotlib.pyplot as plt
 
 # =============================================================================
 # functions
 # =============================================================================
-def import_reshape(wd, img):
+def import_reshape(wd, img):  
+    """imports and reshapes the multiband raster
+    
+    inputs: 
+        wd: working directory
+        img: relative path to image 
+        
+    output: numpy array with rows = pixels, cols = bands/features
+    """
     # open connection, grab metadata
     rast = rio.open(wd + img)
     meta = rast.meta.copy()

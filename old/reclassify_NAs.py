@@ -7,13 +7,22 @@ Created on Sun Feb 28 13:59:11 2021
 """
 
 import rasterio as rio
-import numpy as np
 import os
 
 # =============================================================================
 # functions
 # =============================================================================
 def reclassify_NAs(wd, img, old_na, new_na):
+    """reclassifies NA values in a raster
+    
+    inputs:
+        wd: working directory
+        img: relative path to image
+        old_na: old na value
+        new_na: new/target na value
+    
+    result: outputs an ENVI raster with appropriate metadata
+    """
     os.chdir(wd)
     r = rio.open(wd + img)
     meta = r.meta.copy()
@@ -36,9 +45,9 @@ def reclassify_NAs(wd, img, old_na, new_na):
 # manual run
 # =============================================================================
 # set wd and parameters
-wd = "/home/vegveg/rf_sb_ang"
-img = "/data/AVng20140603_sbdr_masked_mosaic"
-old_na = 0
-new_na = -999
+#wd = "/home/vegveg/rf_sb_ang"
+#img = "/data/AVng20140603_sbdr_masked_mosaic"
+#old_na = 0
+#new_na = -999
 
-reclassify_NAs(wd, img, old_na, new_na)
+#reclassify_NAs(wd, img, old_na, new_na)
