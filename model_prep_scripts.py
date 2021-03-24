@@ -73,7 +73,7 @@ def rasterize_ttv(wd, img, ttvfn, classkeysfn):
                  'width': pts_rast.shape[1],
                  'height': pts_rast.shape[0]})
 
-    with rio.open(ttvfn[:-5] + ".tif", 'w+', **meta) as dst:
+    with rio.open(ttvfn[:-5], 'w+', **meta) as dst:
         dst.write(pts_rast[None,:,:])
         
         

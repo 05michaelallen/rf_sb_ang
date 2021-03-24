@@ -35,14 +35,14 @@ def clip(wd, img, shpfn):
     
     # set wd and open image connection
     os.chdir(wd)
-    r = rio.open(wd + img)
+    r = rio.open(img)
     meta = r.meta.copy() # grab metadata
     
     # get band descriptions
     r_descr = list(r.descriptions)
     
     # open shapefile
-    shp = gpd.read_file(wd + shpfn)
+    shp = gpd.read_file(shpfn)
     
     # clip 
     rc, rc_trans = rio.mask.mask(r, shp[['geometry']].values.flatten(), nodata = meta['nodata'], crop = True)
@@ -52,7 +52,7 @@ def clip(wd, img, shpfn):
                  'width': rc.shape[2],
                  'transform': rc_trans})
     # output
-    with rio.open(wd + img + "_clip", 'w', **meta) as dst:
+    with rio.open(img + "_clip", 'w', **meta) as dst:
         for b in range(r.count):
             dst.set_band_description(b+1, r_descr[b])
         dst.write(rc)
@@ -82,13 +82,14 @@ def rm_bad_bands(wd, img, bad_bands_fn, band_status_column_name, bad_band_value)
     """
     
     # import raster, grab metadata
-    rast = rio.open(wd + img)
+    os.chdir(wd)
+    rast = rio.open(img)
     rast_descr = list(rast.descriptions)
     rast_rd = rast.read()
     meta = rast.meta.copy()
     
     # import bad bands list
-    bbands = pd.read_csv(wd + bad_bands_fn)
+    bbands = pd.read_csv(bad_bands_fn)
     # filter based on bad band value
     bbands = bbands[bbands[band_status_column_name] != bad_band_value]
     bbands_idx = bbands.index.values.tolist()
@@ -106,7 +107,7 @@ def rm_bad_bands(wd, img, bad_bands_fn, band_status_column_name, bad_band_value)
     
     
     # output file
-    with rio.open(wd + img + "_rmbadbands", 'w', **meta) as dst:
+    with rio.open(img + "_rmbadbands", 'w', **meta) as dst:
         for b in range(len(bbands_idx)):
             dst.set_band_description(b+1, band_labs[b])
         dst.write(rast_rd_bbl)
@@ -133,7 +134,7 @@ def reclassify_NAs(wd, img, old_na, new_na):
     
     """
     os.chdir(wd)
-    r = rio.open(wd + img)
+    r = rio.open(img)
     meta = r.meta.copy()
     rr = r.read()
     # get descriptions
@@ -145,7 +146,7 @@ def reclassify_NAs(wd, img, old_na, new_na):
     # change metadata
     meta.update({'nodata': new_na})
     # output
-    with rio.open(wd + img + "_reclass", 'w', **meta) as dst:
+    with rio.open(img + "_reclass", 'w', **meta) as dst:
         for b in range(r.count):
             dst.set_band_description(b+1, r_descr[b])
         dst.write(rr)
@@ -170,7 +171,8 @@ def import_reshape(wd, img):
     
     """
     # open connection, grab metadata
-    rast = rio.open(wd + img)
+    os.chdir(wd)
+    rast = rio.open(img)
     meta = rast.meta.copy()
     desc = list(rast.descriptions)
     

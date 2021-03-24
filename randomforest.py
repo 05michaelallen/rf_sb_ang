@@ -10,11 +10,9 @@ import os
 import pandas as pd
 import numpy as np
 import rasterio as rio
+import matplotlib.pyplot as plt
 import sklearn.model_selection
 from sklearn.ensemble import RandomForestClassifier
-
-# from other scripts 
-from pre_processing_scripts import import_reshape
 
 # =============================================================================
 # functions
@@ -25,14 +23,26 @@ from pre_processing_scripts import import_reshape
 # import and pre-process data
 # =============================================================================
 # set up filepaths
-wd = "/home/vegveg/rf_sb_ang"
-img = "/data/AVng20140603_sbdr_masked_mosaic_reclass_rmbadbands_clip"
-bblfn = "/data/meta/"
-ttvfn = "/data/train/try1_03232021"
-classkeysfn = "./data/train/try1_03232021_classkeys.txt"
-outfn = "/data/rf/try1_03232021"
+wd = "/home/vegveg/rf_sb_ang/code/"
+img = "../data/AVng20140603_sbdr_masked_mosaic_reclass_rmbadbands_clip"
+bblfn = "../data/meta/bbl2014_conservative.csv"
+ttvfn = "../data/train/try2_03242021"
+classkeysfn = "../data/train/try2_03242021_classkeys.txt"
+outfn = "../data/rf/try2_03242021"
+boundaryfn = "../data/shp/david_ch2_sbmetroclips/sbmetro_extent_dlm_ch2/santa_barbara_ca_urbanized_area_utmz11_avngsub3_wgs84.shp"
+
 # set wd
 os.chdir(wd)
+# from other scripts 
+from pre_processing_scripts import import_reshape, rm_bad_bands, reclassify_NAs, clip
+from model_prep_scripts import rasterize_ttv
+
+### pre-processing (note: only need to run these if needed)
+#reclassify_NAs(wd, img, 0, -999)
+#rm_bad_bands(wd, img, bblfn, 'status', 0)
+#clip(wd, img, boundaryfn)
+#rasterize_ttv(wd, img, ttvfn + ".gpkg", classkeysfn)
+
 
 # import and reshape the raster and training data
 r, rmet, rdes = import_reshape(wd, img)
@@ -44,6 +54,9 @@ r[(r >= -0.1) & (r < 0)] = 0
 
 # import class keys
 classkeys = pd.read_csv(classkeysfn)
+# import bbl for wl labels
+bbl = pd.read_csv(bblfn)
+bbl = bbl[bbl['status'] == 1]
 
 # convert to df and merge bands and labels
 # note this is memory intensive, swap to numpy instead
@@ -71,17 +84,26 @@ rf = RandomForestClassifier(n_estimators = 500,
 
 
 
-
 # =============================================================================
 # run full model with good parameters
 # =============================================================================
 # train model on full training set
 rf.fit(X_train, y_train)
+
+# test parameters
 rf.oob_score_
+fi = rf.feature_importances_
+# plot fi as a function of wl
+plt.scatter(bbl['wl'], fi)
+plt.scatter(bbl['wl'], rt_labeled.iloc[100,:-1])
+
 
 # =============================================================================
 # use test set to evaluate generalizability/fit
 # =============================================================================
+rf.fit(X_test, y_test)
+rf.oob_score_
+
 
 # =============================================================================
 # predict on entire image, post-processing, output
@@ -98,7 +120,7 @@ rf_final = RandomForestClassifier(n_estimators = 500,
 
 rf_final.fit(rt_labeled.iloc[:,:-1], rt_labeled['labels'])
 predicted = rf_final.predict(rt_final)
-
+rf_final.oob_score_
 ### process output
 # convert to df with indices from the nadrop dataset
 predicted = pd.DataFrame(predicted, 
