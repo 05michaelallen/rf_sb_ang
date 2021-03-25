@@ -59,7 +59,7 @@ def clip(wd, img, shpfn):
       
 
 
-def rm_bad_bands(wd, img, bad_bands_fn, band_status_column_name, bad_band_value):
+def rm_bad_bands(wd, img, bblfn, band_status_column_name, bad_band_value):
     """Reclassifies NA values in a raster
     
     Parameters
@@ -68,7 +68,7 @@ def rm_bad_bands(wd, img, bad_bands_fn, band_status_column_name, bad_band_value)
         working directory
     img : str
         relative path to image
-    bad_bands_fn : str
+    bblfn : str
         relative path to bad bands list (.csv)
     band_status_column_name : str
         which column has the bb information (usually 1 and 0)
@@ -89,7 +89,7 @@ def rm_bad_bands(wd, img, bad_bands_fn, band_status_column_name, bad_band_value)
     meta = rast.meta.copy()
     
     # import bad bands list
-    bbands = pd.read_csv(bad_bands_fn)
+    bbands = pd.read_csv(bblfn)
     # filter based on bad band value
     bbands = bbands[bbands[band_status_column_name] != bad_band_value]
     bbands_idx = bbands.index.values.tolist()

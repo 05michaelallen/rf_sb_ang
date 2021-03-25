@@ -26,27 +26,30 @@ from sklearn.ensemble import RandomForestClassifier
 wd = "/home/vegveg/rf_sb_ang/code/"
 img = "../data/AVng20140603_sbdr_masked_mosaic_reclass_rmbadbands_clip"
 bblfn = "../data/meta/bbl2014_conservative.csv"
-ttvfn = "../data/train/try2_03242021"
+ttvimgfn = "../data/train/try2_03242021"
 classkeysfn = "../data/train/try2_03242021_classkeys.txt"
 outfn = "../data/rf/try2_03242021"
 boundaryfn = "../data/shp/david_ch2_sbmetroclips/sbmetro_extent_dlm_ch2/santa_barbara_ca_urbanized_area_utmz11_avngsub3_wgs84.shp"
+classname = "soil"
 
 # set wd
 os.chdir(wd)
 # from other scripts 
 from pre_processing_scripts import import_reshape, rm_bad_bands, reclassify_NAs, clip
-from model_prep_scripts import rasterize_ttv
+from model_prep_scripts import rasterize_ttv, classwise_plots
 
 ### pre-processing (note: only need to run these if needed)
 #reclassify_NAs(wd, img, 0, -999)
 #rm_bad_bands(wd, img, bblfn, 'status', 0)
 #clip(wd, img, boundaryfn)
-#rasterize_ttv(wd, img, ttvfn + ".gpkg", classkeysfn)
-
+rasterize_ttv(wd, img, ttvimgfn + ".gpkg", classkeysfn)
+### plots
+for c in classkeys['class']:
+    classwise_plots(wd, img, ttvimgfn, classkeysfn, c, bblfn)
 
 # import and reshape the raster and training data
 r, rmet, rdes = import_reshape(wd, img)
-t, tmet, tdes = import_reshape(wd, ttvfn)
+t, tmet, tdes = import_reshape(wd, ttvimgfn)
 
 # clean up ang data
 r[r < -0.1] = np.nan
