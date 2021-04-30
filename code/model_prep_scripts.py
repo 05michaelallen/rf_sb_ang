@@ -23,9 +23,9 @@ def rasterize_ttv(wd, img, ttvfn, classkeysfn):
     Parameters
     ----------
     wd : str
-        working directory \n
+        working directory
     ttvfn : str
-        relative path to ttv geopackage \n
+        relative path to ttv geopackage
     classkeysfn : str
         relative path to classkeys comma separated file.
 

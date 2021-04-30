@@ -23,7 +23,7 @@ from sklearn.ensemble import RandomForestClassifier
 # import and pre-process data
 # =============================================================================
 # set up filepaths
-wd = "/home/vegveg/rf_sb_ang/code/"
+wd = "/home/vegveg/rf_sb_ang/code/code/"
 img = "../data/AVng20140603_sbdr_masked_mosaic_reclass_rmbadbands_clip"
 bblfn = "../data/meta/bbl2014_conservative.csv"
 ttvimgfn = "../data/train/try2_03242021"
@@ -42,10 +42,10 @@ from model_prep_scripts import rasterize_ttv, classwise_plots
 #reclassify_NAs(wd, img, 0, -999)
 #rm_bad_bands(wd, img, bblfn, 'status', 0)
 #clip(wd, img, boundaryfn)
-rasterize_ttv(wd, img, ttvimgfn + ".gpkg", classkeysfn)
+#rasterize_ttv(wd, img, ttvimgfn + ".gpkg", classkeysfn)
 ### plots
-for c in classkeys['class']:
-    classwise_plots(wd, img, ttvimgfn, classkeysfn, c, bblfn)
+#for c in classkeys['class']:
+#    classwise_plots(wd, img, ttvimgfn, classkeysfn, c, bblfn)
 
 # import and reshape the raster and training data
 r, rmet, rdes = import_reshape(wd, img)
@@ -61,81 +61,141 @@ classkeys = pd.read_csv(classkeysfn)
 bbl = pd.read_csv(bblfn)
 bbl = bbl[bbl['status'] == 1]
 
-# convert to df and merge bands and labels
-# note this is memory intensive, swap to numpy instead
+### plots
+#for c in classkeys['class']:
+#    classwise_plots(wd, img, ttvimgfn, classkeysfn, c, bblfn)
+
+
+# =============================================================================
+# import and pre-process data
+# =============================================================================
+
+# this splits traning data at the plot level to avoid contamination 
+# from the same polygons in training and test.
+shp = gpd.read_file(trainingfn + ".gpkg") # load data
+classes = np.unique(shp['class']).tolist() # list classes
+training = []
+testing = []
+# manual random 80/20 split object-wise
+for c in classes:
+    shpc = shp[shp['class'] == c]
+    trainingc = shpc.sample(frac = 0.8)
+    testingc = shpc.loc[~shpc.index.isin(trainingc.index)]
+    # append to new split lists
+    training.append(trainingc)
+    testing.append(testingc)
+    del shpc, trainingc, testingc # cleanup
+    
+# concat back into a dataframe and output split train/test vectors
+training = pd.concat(training).to_file(trainingfn + "_training.gpkg", driver = "GPKG")
+testing = pd.concat(testing).to_file(trainingfn + "_testing.gpkg", driver = "GPKG")
+
+# import and reshape the pre-processed scene and rasterized training data
+r, rmet, rdes = import_reshape(wd, imgfn + "_reclass_rmbadbands_clip")
+
+# rasterize training and test using reflectance image to burn
+rasterize_training(wd, imgfn, trainingfn + "_training.gpkg", classkeysfn)
+rasterize_training(wd, imgfn, trainingfn + "_testing.gpkg", classkeysfn)
+
+# import and reshape train/test
+t, tmet, tdes = import_reshape(wd, trainingfn + "_training")
+v, vmet, vdes = import_reshape(wd, trainingfn + "_testing")
+
+# merge band features and labels
 r = pd.DataFrame(r, columns = rdes)
-t = pd.DataFrame(t, columns = ['labels'])
-rt = pd.concat([r, t], axis = 1)
-del r, t
+t = pd.DataFrame(t, columns = ['traininglabels'])
+v = pd.DataFrame(v, columns = ['testlabels'])
+rtv = pd.concat([r, t, v], axis = 1)
+del r, t, v
 
-# grab labeled pixels
-rt_labeled = rt[rt['labels'] > 0]
-
-# =============================================================================
-# train/test, tune hyperparameters
-# =============================================================================
-# split into train/test
-X_train, X_test, y_train, y_test = sklearn.model_selection.train_test_split(rt_labeled.iloc[:,:-1], rt_labeled['labels'])
-
-# set up cv-folds
-
-# set hyperparameters
-rf = RandomForestClassifier(n_estimators = 500,
-                            n_jobs = -1,
-                            verbose = 1, 
-                            oob_score = True)
+# generate model inputs
+train = rtv[rtv['traininglabels'] > 0]
+X_train = train.iloc[:,:-2]
+y_train = train['traininglabels']
+test = rtv[rtv['testlabels'] > 0]
+X_test = test.iloc[:,:-2]
+y_test = test['testlabels']
+del train, test
 
 
-
-# =============================================================================
-# run full model with good parameters
-# =============================================================================
+### tune/set hyperparameters
+if FLAG_hyperparametertuning: 
+    # loop through list of dicts w/hyperparameters to find optimal params
+    # generally for rf we add trees until we get convergence unless features are 
+    # messy or we detect overfitting
+    gs = GridSearchCV(RandomForestClassifier(), param_grid, cv = 4)
+    gs.fit(X_train, y_train)
+    print("Optimal hyperparameters from gridsearch: " + str(gs.best_params_)) 
+    # set up model w/ best params identified in gridsearch
+    rf_tuned = RandomForestClassifier(**gs.best_params_, n_jobs = -1, oob_score = True)
+else:
+    print("Running with pre-set hyperparameters: " + str(params))
+    rf_tuned = RandomForestClassifier(**params, n_jobs = -1, oob_score = True)
+    
+### test feature/internal/external validity
 # train model on full training set
-rf.fit(X_train, y_train)
+rf_tuned.fit(X_train, y_train)
 
-# test parameters
-rf.oob_score_
-fi = rf.feature_importances_
-# plot fi as a function of wl
-plt.scatter(bbl['wl'], fi)
-plt.scatter(bbl['wl'], rt_labeled.iloc[100,:-1])
+# calculate oob and cross validation scores on train
+print("Training OOB score: ", str(rf_tuned.oob_score_))
+kcval = cross_val_score(rf_tuned, X_train, y_train, cv = 4)
+print("k-fold Cross Val scores:", str(kcval))
+
+# test feature validity for aerosol/water influence
+if FLAG_plotbandimportance:
+    check_bandimportance(wd, rf_tuned, bblfn, 'status')
+
+# pixel-wise evaluation using test set
+y_pred = rf_tuned.predict(X_test)
+# generate pixel-wise confusion matrix 
+cm_pixel_test = confusion_matrix(y_test, y_pred)
+    
+print(datetime.now())
+print("Continuing to final prediction. Make sure model params and internal/external validity look reasonable.")
 
 
 # =============================================================================
-# use test set to evaluate generalizability/fit
+# PREDICT ON SCENE USING TUNED MODEL, POLYGON-SCALE ASSESSMENT, POST-PROCESSING
 # =============================================================================
-rf.fit(X_test, y_test)
-rf.oob_score_
-
-
-# =============================================================================
-# predict on entire image, post-processing, output
-# =============================================================================
-### first process the image 
-# take off labels, drop masked pixels
-rt_final = rt.iloc[:,:-1].dropna()
-
-### set up, train, and predict using selected hyperparameters
-rf_final = RandomForestClassifier(n_estimators = 500,
-                                  n_jobs = -1,
-                                  verbose = 1, 
-                                  oob_score = True)
-
-rf_final.fit(rt_labeled.iloc[:,:-1], rt_labeled['labels'])
-predicted = rf_final.predict(rt_final)
-rf_final.oob_score_
 ### process output
-# convert to df with indices from the nadrop dataset
-predicted = pd.DataFrame(predicted, 
-                         index = rt_final.index, 
-                         columns = ['class'])
-# merge with shape of input image (with masked pixels), drop helper column
-predicted = pd.concat([predicted, rt.iloc[:,0]], axis = 1)['class']
-# reshape into an image
-predicted_image = np.reshape(np.array(predicted), 
-                             (rmet['height'], rmet['width']))
+# take full set, drop labels and masked pixels
+rt_final = rtv.iloc[:,:-2].dropna()
+predicted = rf_tuned.predict(rt_final)
 
-### ouput
+# convert to df with indices from the nadrop dataset
+predicted_df = pd.DataFrame(predicted, index = rt_final.index, columns = ['class'])
+
+# merge with shape of input image (with masked pixels), drop helper column
+predicted_df = pd.concat([predicted_df, rtv.iloc[:,0]], axis = 1)['class']
+
+# reshape into an image using height and width from metadata
+predicted_image = np.reshape(np.array(predicted_df), (rmet['height'], rmet['width']))
+
+# polygon (e.g., field, neighborhood) scale assessment
+if training_type == "polygon":
+    # load test polygons
+    testpoly = gpd.read_file(trainingfn + "_testing.gpkg")
+    # compute zonal majorioty 
+    y_pred_poly = rs.zonal_stats(testpoly, 
+                                 predicted_image,
+                                 affine = rmet['transform'],
+                                 stats = ["majority"])
+    y_pred_poly = pd.DataFrame(y_pred_poly)
+
+    # replace class name with id
+    classkeys = pd.read_csv(classkeysfn)
+    for c in range(len(classkeys)):
+        for i in range(len(testpoly)):
+            if testpoly['class'][i] == classkeys.iloc[c, 1]: 
+                testpoly['class'][i] = classkeys.iloc[c, 0]
+
+    # merge into confusion matrix
+    cm_poly_test = confusion_matrix(pd.DataFrame(testpoly['class']).astype(float), y_pred_poly)
+elif training_type == "point":
+    pass
+else:
+    raise ValueError("Training_type is invalid, must be 'polygon' or 'point'.")  
+
+# ouput predicted image
 with rio.open(wd + outfn, 'w', **tmet) as dst:
     dst.write(predicted_image[None,:,:])
-
