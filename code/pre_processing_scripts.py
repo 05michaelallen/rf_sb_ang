@@ -7,7 +7,7 @@ Created on Tue Mar 23 11:55:00 2021
 """
 
 import rasterio as rio
-import rasterio.mask
+import rasterio.mask as mask
 import pandas as pd
 import geopandas as gpd
 import os
@@ -15,75 +15,72 @@ import os
 # =============================================================================
 # functions
 # =============================================================================
-def clip(wd, img, shpfn):
-    """Clips a multiband raster to a shapefile. Retains metadata. 
-
+### preprocessing helper functions ###
+def reclassify_NAs(wd, imgfn, old_na, new_na = -999):
+    """Reclassifies NA values in a scene.
+    
     Parameters
     ----------
     wd : str
-        working directory \n
-    img : str
-        relative path to image \n
-    shpfn : str
-        relative path to shapefile
-
+        Working directory
+    imgfn : str
+        Relative path to image
+    old_na : int
+        Old na value
+    new_na : int
+        New/target na value. The default is -999.
+    
     Returns
     -------
-    Writes a clipped raster in ENVI format with correct metadata. Suffix = _clip
-
+    Writes a filtered ENVI raster with appropriate metadata.
+    
     """
     
     # set wd and open image connection
     os.chdir(wd)
-    r = rio.open(img)
-    meta = r.meta.copy() # grab metadata
-    
-    # get band descriptions
+    r = rio.open(imgfn)
+    meta = r.meta.copy()
+    rr = r.read()
+    # get descriptions
     r_descr = list(r.descriptions)
     
-    # open shapefile
-    shp = gpd.read_file(shpfn)
-    
-    # clip 
-    rc, rc_trans = rio.mask.mask(r, shp[['geometry']].values.flatten(), nodata = meta['nodata'], crop = True)
+    # reclassify
+    rr[rr == old_na] = new_na
     
     # change metadata
-    meta.update({'height': rc.shape[1], 
-                 'width': rc.shape[2],
-                 'transform': rc_trans})
+    meta.update({'nodata': new_na})
     # output
-    with rio.open(img + "_clip", 'w', **meta) as dst:
+    with rio.open(imgfn, 'w', **meta) as dst:
         for b in range(r.count):
             dst.set_band_description(b+1, r_descr[b])
-        dst.write(rc)
-      
+        dst.write(rr)
 
 
-def rm_bad_bands(wd, img, bblfn, band_status_column_name, bad_band_value):
-    """Reclassifies NA values in a raster
+def rm_bad_bands(wd, imgfn, bblfn, band_status_column_name, bad_band_value = 0):
+    """Removes bad bands from a hyperspectral scene. 
     
     Parameters
     ----------
     wd : str
-        working directory
-    img : str
-        relative path to image
+        Working directory
+    imgfn : str
+        Relative path to image
     bblfn : str
-        relative path to bad bands list (.csv)
+        Relative path to bad bands list (.csv)
     band_status_column_name : str
-        which column has the bb information (usually 1 and 0)
+        Which column has the bad band information
     bad_band_value : int
-        what is the value that indicates a band is bad? (usually 0)
+        What is the value that indicates a band is bad? The default is 0.
     
     Returns
     -------
-    Writes an ENVI raster with the bad bands clipped. retains the metadata.
+    Writes a raster with bad bands removed. Retains image metadata.
     
     """
     
-    # import raster, grab metadata
+    # set wd and open image connection
     os.chdir(wd)
-    rast = rio.open(img)
+    rast = rio.open(imgfn)
     rast_descr = list(rast.descriptions)
     rast_rd = rast.read()
     meta = rast.meta.copy()
@@ -96,7 +93,7 @@ def rm_bad_bands(wd, img, bblfn, band_status_column_name, bad_band_value):
     try:
         band_labs = [rast_descr[i] for i in bbands_idx]
     except:
-        print("band descriptions not found")
+        print("Band descriptions not found")
     
     # remove bad bands from raster
     rast_rd_bbl = rast_rd[bbands_idx]
@@ -105,80 +102,85 @@ def rm_bad_bands(wd, img, bblfn, band_status_column_name, bad_band_value):
     # update metadata
     meta.update({'count': len(bbands_idx)})
     
-    
     # output file
-    with rio.open(img + "_rmbadbands", 'w', **meta) as dst:
+    with rio.open(imgfn, 'w', **meta) as dst:
         for b in range(len(bbands_idx)):
             dst.set_band_description(b+1, band_labs[b])
         dst.write(rast_rd_bbl)
 
 
+def clip_scene(wd, imgfn, shpfn):
+    """Clips a scene to a shapefile. Retains band-by-band metadata. 
 
-def reclassify_NAs(wd, img, old_na, new_na):
-    """Reclassifies NA values in a raster
-    
     Parameters
     ----------
     wd : str
-        working directory
-    img : str
-        relative path to image
-    old_na : int
-        old na value
-    new_na : int
-        new/target na value
-    
+        Working directory
+    imgfn : str
+        Relative path to image
+    shpfn : str
+        Relative path to shapefile
+
     Returns
     -------
-    Outputs an ENVI raster with appropriate metadata.
-    
+    Writes a clipped raster with correct metadata. 
+
     """
+    
+    # set wd and open image connection
     os.chdir(wd)
-    r = rio.open(img)
-    meta = r.meta.copy()
-    rr = r.read()
-    # get descriptions
+    r = rio.open(imgfn)
+    meta = r.meta.copy() # grab metadata
+    
+    # get band descriptions
     r_descr = list(r.descriptions)
     
-    # reclassify
-    rr[rr == old_na] = new_na
+    # open shapefile
+    shp = gpd.read_file(shpfn)
+    
+    # clip 
+    rc, rc_trans = mask.mask(r, shp[['geometry']].values.flatten(), 
+                             nodata = meta['nodata'], crop = True)
     
     # change metadata
-    meta.update({'nodata': new_na})
+    meta.update({'height': rc.shape[1], 
+                 'width': rc.shape[2],
+                 'transform': rc_trans})
     # output
-    with rio.open(img + "_reclass", 'w', **meta) as dst:
+    with rio.open(imgfn, 'w', **meta) as dst:
         for b in range(r.count):
             dst.set_band_description(b+1, r_descr[b])
-        dst.write(rr)
+        dst.write(rc)
 
-
-
-def import_reshape(wd, img):  
-    """Imports and reshapes a multiband raster
+def import_reshape(wd, imgfn):  
+    """Imports and reshapes a scene
     
     Parameters
     ----------
     wd : str
-        working directory
-    img: str
-        relative path to image 
+        Working directory
+    imgfn : str
+        Relative path to image 
         
     Returns
     ------- 
     Numpy array with rows = pixels, cols = bands/features.
     Metadata
-    Band descriptions
+    Band descriptions (i.e., band labels)
     
     """
     # open connection, grab metadata
     os.chdir(wd)
-    rast = rio.open(img)
-    meta = rast.meta.copy()
-    desc = list(rast.descriptions)
-    
-    # read and reshape
-    rastr = rast.read()
-    rastrr = rastr.reshape([rast.count, rast.height * rast.width]).T 
-    
-    # return metadata (for output) and reshaped raster
-    return rastrr, meta, desc
+    try:
+        rast = rio.open(imgfn)
+        meta = rast.meta.copy()
+        desc = list(rast.descriptions)
+        
+        # read and reshape
+        rastr = rast.read()
+        rastrr = rastr.reshape([rast.count, rast.height * rast.width]).T 
+
+        # return metadata (for output) and reshaped raster
+        return rastrr, meta, desc
+    except:
+        raise ValueError("Pre-processed image not found. Need to run pre-proccessing functions?")

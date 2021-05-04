@@ -17,37 +17,35 @@ import matplotlib.pyplot as plt
 # =============================================================================
 # functions
 # =============================================================================
-def rasterize_ttv(wd, img, ttvfn, classkeysfn):
-    """Rasterizes traning/test/valid data using the raw raster
+### model prep ###
+def rasterize_training(wd, imgfn, trainingfn, classkeysfn):
+    """Rasterizes training/test/valid data
 
     Parameters
     ----------
     wd : str
-        working directory
-    ttvfn : str
-        relative path to ttv geopackage
+        Working directory
+    imgfn : str
+        Relative path to image
+    trainingfn : str
+        Relative path to training/test/valid vector file (geopackage, .gpkg)
     classkeysfn : str
-        relative path to classkeys comma separated file.
+        Relative path to classkeys comma separated file.
 
     Returns
     -------
     Rasterized training/test/validation data w/meta matching raw raster
     """
-    # set wd
     os.chdir(wd)
-    
     # open raster
-    r = rio.open(img)
-    
+    r = rio.open(imgfn)
     # import shapefile
-    shp = gpd.read_file(ttvfn)
+    shp = gpd.read_file(trainingfn)
     
     # import classkeys
     classkeys = pd.read_csv(classkeysfn)
     
-    # because we're rasterizing the training data (timesink now, but much faster later on)
-    # we need to match classnames to integer class labels
-    # duplicate classids
+    # duplicate classnames column
     shp['classname'] = shp['class']
     
     # replace class name with id    
@@ -60,21 +58,19 @@ def rasterize_ttv(wd, img, ttvfn, classkeysfn):
     shapes = ((geom, value) for geom, value in zip(shp['geometry'], shp['class']))
     
     # burn traning polygons into a new raster 
-    pts_rast = features.rasterize(shapes, 
-                                  out_shape = r.shape, 
-                                  transform = r.transform)
+    pts_rast = features.rasterize(shapes, out_shape = r.shape, transform = r.transform)
     # set nodata
-    # note: must convert to float (instead of uint)
     pts_rast = pts_rast.astype('float32')
     pts_rast[pts_rast < 1] = np.nan
+    # modify metadata
     meta = r.meta.copy()
     meta.update({'count': 1,
                  'dtype': 'float32',
                  'nodata': -999,
                  'width': pts_rast.shape[1],
                  'height': pts_rast.shape[0]})
-
-    with rio.open(ttvfn[:-5], 'w+', **meta) as dst:
+    # output raster
+    with rio.open(trainingfn[:-5], 'w+', **meta) as dst:
         dst.write(pts_rast[None,:,:])
         
 
@@ -150,4 +146,35 @@ def classwise_plots(wd, img, ttvimgfn, classkeysfn, classname, bblfn, band_statu
     ax.tick_params(top = True, right = True)
     plt.show()
     
+def check_bandimportance(wd, model, bblfn, band_status_column_name, bad_band_value = 0):
+    '''Plots band importance. Note: HIGHLY recommended for hyperspectral or 
+    aerial imagery to check for aerosol/atm influence. Spikes in FI are generally
+    from spurious variance in atmospherically influenced bands.
     
+    Parameters
+    ----------
+    wd : str
+        Working directory
+    model : RandomForestClassifier object
+        Trained RF model
+    bblfn : str
+        Relative path to bad bands list (.csv)
+    band_status_column_name : str
+        Which column has the bad band information
+    bad_band_value : int
+        What is the value that indicates a band is bad? The default is 0.
+
+    Returns
+    -------
+    Plots band-by-band Gini FI.
+    
+    '''
+    os.chdir(wd)
+    # import bbl for wavelength labels
+    bbl = pd.read_csv(bblfn)
+    bbl = bbl[bbl[band_status_column_name] != bad_band_value]
+    # plot wavelength vs. FI 
+    plt.scatter(bbl.iloc[:,0], model.feature_importances_, edgecolors = 'k')
+    plt.xlabel("Wavelength")
+    plt.ylabel("Feature Importance")
+    plt.show()

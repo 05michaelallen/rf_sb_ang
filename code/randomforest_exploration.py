@@ -6,70 +6,68 @@ Created on Tue Mar 23 14:07:16 2021
 @author: vegveg
 """
 
+
 import os
 import pandas as pd
 import numpy as np
 import rasterio as rio
-import matplotlib.pyplot as plt
-import sklearn.model_selection
+import rasterstats as rs
+import geopandas as gpd
+from sklearn.model_selection import cross_val_score, GridSearchCV
 from sklearn.ensemble import RandomForestClassifier
-
-# =============================================================================
-# functions
-# =============================================================================
+from sklearn.metrics import confusion_matrix
+from datetime import datetime
 
 
 # =============================================================================
-# import and pre-process data
+# USER DEFINED PARAMETERS
 # =============================================================================
 # set up filepaths
 wd = "/home/vegveg/rf_sb_ang/code/code/"
-img = "../data/AVng20140603_sbdr_masked_mosaic_reclass_rmbadbands_clip"
+imgfn = "../data/AVng20140603_sbdr_masked_mosaic"
 bblfn = "../data/meta/bbl2014_conservative.csv"
-ttvimgfn = "../data/train/try2_03242021"
+trainingfn = "../data/train/try2_03242021"
 classkeysfn = "../data/train/try2_03242021_classkeys.txt"
 outfn = "../data/rf/try2_03242021"
 boundaryfn = "../data/shp/david_ch2_sbmetroclips/sbmetro_extent_dlm_ch2/santa_barbara_ca_urbanized_area_utmz11_avngsub3_wgs84.shp"
-classname = "soil"
 
-# set wd
+### flags for different running modes (e.g., preprocessing, testing/production)
+FLAG_preprocessing = False
+FLAG_trainingspectralplots = False
+FLAG_hyperparametertuning = True
+FLAG_plotbandimportance = True
+
+# type of training vectors, can be "point" or "polygon". 
+# "polygon" generates an additional polygon-scale confusion matrix
+training_type = 'polygon'
+
+### set hyperparameters or gridsearch candidates
+param_grid = [{'n_estimators': [50, 100, 200], 
+               'max_features': [None, 'auto', 'log2']}]
+# **or** manually define RF hyperparameters
+params = {'n_estimators': 500, "max_features": 'auto'}
+
+
+# =============================================================================
+# ENTER MAIN: PRE-PROCESSING
+# =============================================================================
+print(datetime.now())
+print("Enter preprocessing.")
+
+# set wd and import helper functions from other scripts 
 os.chdir(wd)
-# from other scripts 
-from pre_processing_scripts import import_reshape, rm_bad_bands, reclassify_NAs, clip
-from model_prep_scripts import rasterize_ttv, classwise_plots
+from pre_processing_scripts import import_reshape, rm_bad_bands, reclassify_NAs, clip_scene
+from model_prep_scripts import rasterize_training, classwise_plots, check_bandimportance
 
-### pre-processing (note: only need to run these if needed)
-#reclassify_NAs(wd, img, 0, -999)
-#rm_bad_bands(wd, img, bblfn, 'status', 0)
-#clip(wd, img, boundaryfn)
-#rasterize_ttv(wd, img, ttvimgfn + ".gpkg", classkeysfn)
-### plots
-#for c in classkeys['class']:
-#    classwise_plots(wd, img, ttvimgfn, classkeysfn, c, bblfn)
+### run scene preprocessing helper functions
+if FLAG_preprocessing:
+    reclassify_NAs(wd, imgfn, 0)
+    rm_bad_bands(wd, imgfn, bblfn, 'status', 0)
+    clip_scene(wd, imgfn, boundaryfn)
+else:
+    print("FLAG_preprocessing == False, running on preprocessed data.")
 
-# import and reshape the raster and training data
-r, rmet, rdes = import_reshape(wd, img)
-t, tmet, tdes = import_reshape(wd, ttvimgfn)
-
-# clean up ang data
-r[r < -0.1] = np.nan
-r[(r >= -0.1) & (r < 0)] = 0
-
-# import class keys
-classkeys = pd.read_csv(classkeysfn)
-# import bbl for wl labels
-bbl = pd.read_csv(bblfn)
-bbl = bbl[bbl['status'] == 1]
-
-### plots
-#for c in classkeys['class']:
-#    classwise_plots(wd, img, ttvimgfn, classkeysfn, c, bblfn)
-
-
-# =============================================================================
-# import and pre-process data
-# =============================================================================
-
+### run training/test polygon/point vector preprocessing
 # this splits traning data at the plot level to avoid contamination 
 # from the same polygons in training and test.
 shp = gpd.read_file(trainingfn + ".gpkg") # load data
@@ -91,7 +89,7 @@ training = pd.concat(training).to_file(trainingfn + "_training.gpkg", driver = "
 testing = pd.concat(testing).to_file(trainingfn + "_testing.gpkg", driver = "GPKG")
 
 # import and reshape the pre-processed scene and rasterized training data
-r, rmet, rdes = import_reshape(wd, imgfn + "_reclass_rmbadbands_clip")
+r, rmet, rdes = import_reshape(wd, imgfn)
 
 # rasterize training and test using reflectance image to burn
 rasterize_training(wd, imgfn, trainingfn + "_training.gpkg", classkeysfn)
@@ -117,7 +115,18 @@ X_test = test.iloc[:,:-2]
 y_test = test['testlabels']
 del train, test
 
+### plot classwise spectra
+if FLAG_trainingspectralplots:
+    classkeys = pd.read_csv(classkeysfn)
+    for c in classkeys['class']:
+        classwise_plots(wd, imgfn, trainingfn + "_training", classkeysfn, c, bblfn)
 
+print(datetime.now())
+print("Images and labels imported, training/test split done, moving to hyperparameter turning.")
+
+# =============================================================================
+# TUNE MODEL HYPERPARAMETERS, GENERATE EVALUATION METRICS
+# =============================================================================
 ### tune/set hyperparameters
 if FLAG_hyperparametertuning: 
     # loop through list of dicts w/hyperparameters to find optimal params
